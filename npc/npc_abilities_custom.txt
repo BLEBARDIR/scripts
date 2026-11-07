@@ -26199,50 +26199,34 @@
     }
 
 	"custom_black_hole"
-{
-    "BaseClass"                     "ability_lua"
-    "ScriptFile"                    "abilities/custom_black_hole.lua"
-    "AbilityBehavior"               "DOTA_ABILITY_BEHAVIOR_CHANNELLED | DOTA_ABILITY_BEHAVIOR_POINT | DOTA_ABILITY_BEHAVIOR_AOE"
-    "AbilityUnitTargetTeam"         "DOTA_UNIT_TARGET_TEAM_ENEMY"
-    "AbilityUnitTargetType"         "DOTA_UNIT_TARGET_HERO | DOTA_UNIT_TARGET_BASIC"
-    "AbilityUnitDamageType"         "DAMAGE_TYPE_PURE"
-    "SpellImmunityType"             "SPELL_IMMUNITY_ENEMIES_NO"
-    "FightRecapLevel"               "2"
-    "AbilityTextureName"            "enigma_black_hole"
-	"AbilitySound"                  "black_hole_sound"
-
-    "MaxLevel"                      "3"
-    "LevelsBetweenUpgrades"         "6"
-    "RequiredLevel"                 "6"
-
-    "AbilityCastRange"              "275"
-    "AbilityCastPoint"              "0.3"
-    "AbilityChannelTime"            "4.0 8.0 12.0"
-    "AbilityCooldown"               "300"
-    "AbilityManaCost"               "300 600 900"
-
-    "AbilityCastAnimation"          "ACT_DOTA_CAST_ABILITY_4"
-    "AbilityChannelAnimation"       "ACT_DOTA_CHANNEL_ABILITY_4"
-
-    "AbilityValues"
     {
-        "base_radius"               "300 125 50"
-        "max_radius"                "1000"
-        "radius_grow_interval"      "0.1"
-        "radius_grow_amount"        "0 7.5 15"
+        "BaseClass"                    "ability_lua"
+        "ScriptFile"                   "abilities/custom_black_hole"
+        "AbilityBehavior"              "DOTA_ABILITY_BEHAVIOR_POINT | DOTA_ABILITY_BEHAVIOR_CHANNELLED | DOTA_ABILITY_BEHAVIOR_AOE"
+        "AbilityUnitTargetTeam"        "DOTA_UNIT_TARGET_TEAM_ENEMY"
+        "AbilityUnitTargetType"        "DOTA_UNIT_TARGET_HERO | DOTA_UNIT_TARGET_BASIC"
+        "AbilityUnitDamageType"        "DAMAGE_TYPE_MAGICAL"
+        "SpellImmunityType"            "SPELL_IMMUNITY_ENEMIES_YES"
+        "SpellDispellableType"         "SPELL_DISPELLABLE_NO"
+		"AbilityCastAnimation"         "ACT_DOTA_CAST_ABILITY_4"
+        "FightRecapLevel"              "2"
+        "MaxLevel"                     "4"
+        "AbilityTextureName"           "enigma_black_hole"
+        "AbilityCastRange"             "275"
+        "AbilityCastPoint"             "0.3"
+        "AbilityCooldown"              "200 190 180 170"
+        "AbilityManaCost"              "200 300 400 500"
 
-        "damage_interval"           "0.1"
-        "damage_per_second"         "20 30 40"
-        "creep_damage_multiplier"   "0.25"
-
-        // 🌀 Скорость стягивания (в ваниле — 30)
-        "pull_speed"                "30"
+        "AbilityValues"
+        {
+            "channel_time"     "4.0 4.0 4.5 4.5"
+            "start_radius"     "400"
+            "radius_growth"    "60 75 90 105"
+            "pull_strength"    "150 175 200 225"
+            "damage"           "50 75 100 125"
+        }
     }
 }
-
-}
-
-
 
 
 

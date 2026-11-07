@@ -1568,7 +1568,7 @@
 "npc_dota_hero_enigma" 
 {
  "Ability1" "generic_hidden"
- "Ability2" "generic_hidden"
+ "Ability2" "enigma_black_hole"
  "Ability3" "custom_black_hole"
  "Ability4" "generic_hidden"
  "Ability5" "generic_hidden"

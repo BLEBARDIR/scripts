@@ -1,146 +1,243 @@
-LinkLuaModifier("modifier_custom_black_hole_pull", "abilities/modifier_custom_black_hole_pull", LUA_MODIFIER_MOTION_NONE)
+LinkLuaModifier("modifier_custom_black_hole_thinker", "abilities/custom_black_hole", LUA_MODIFIER_MOTION_NONE)
+LinkLuaModifier("modifier_custom_black_hole_aura",    "abilities/custom_black_hole", LUA_MODIFIER_MOTION_NONE)
 
 custom_black_hole = class({})
 
+--------------------------------------------------------------------------------
+-- Ability
+--------------------------------------------------------------------------------
+function custom_black_hole:GetChannelTime()
+    return self:GetSpecialValueFor("channel_time")
+end
+
 function custom_black_hole:GetAOERadius()
-    return self:GetSpecialValueFor("base_radius")
+    return self:GetSpecialValueFor("start_radius")
 end
 
 function custom_black_hole:OnSpellStart()
     local caster = self:GetCaster()
     local point  = self:GetCursorPosition()
 
-    self.cast_point           = point
-    self.channel_start_time   = GameRules:GetGameTime()
-    self.current_radius       = self:GetSpecialValueFor("base_radius")
-    self.max_radius           = self:GetSpecialValueFor("max_radius")
-    self.radius_grow_interval = self:GetSpecialValueFor("radius_grow_interval")
-    self.radius_grow_amount   = self:GetSpecialValueFor("radius_grow_amount")
-    self.damage_interval      = self:GetSpecialValueFor("damage_interval")
-    self.creep_damage_multiplier = self:GetSpecialValueFor("creep_damage_multiplier")
-    self.pull_speed           = self:GetSpecialValueFor("pull_speed")
+    local thinker = CreateModifierThinker(
+        caster,
+        self,
+        "modifier_custom_black_hole_thinker",
+        {
+            duration      = self:GetChannelTime(),
+            start_radius  = self:GetSpecialValueFor("start_radius"),
+            radius_growth = self:GetSpecialValueFor("radius_growth"),
+            pull_strength = self:GetSpecialValueFor("pull_strength"),
+            damage        = self:GetSpecialValueFor("damage"),
+            position      = point,
+        },
+        point,
+        caster:GetTeamNumber(),
+        false
+    )
 
-    self.affected_units = {}
-
-    GridNav:DestroyTreesAroundPoint(point, self.current_radius, false)
-
-    self:StartRadiusGrowth()
-    self:StartAuraTimer()
-    self:PlayEffects(point)
+    self.thinker = thinker
 end
 
-function custom_black_hole:GetRemainingChannelTime()
-    local total   = self:GetChannelTime() or 0
-    local elapsed = GameRules:GetGameTime() - self.channel_start_time
-    return math.max(0.05, total - elapsed)
+function custom_black_hole:OnChannelFinish(bInterrupted)
+    if self.thinker and not self.thinker:IsNull() then
+        self.thinker:ForceKill(false)
+    end
+    self.thinker = nil
 end
 
-function custom_black_hole:StartRadiusGrowth()
-    local ability = self
-    local point   = self.cast_point
+--------------------------------------------------------------------------------
+-- Thinker
+--------------------------------------------------------------------------------
+modifier_custom_black_hole_thinker = class({})
 
-    Timers:CreateTimer(self.radius_grow_interval, function()
-        local caster = ability:GetCaster()
-        if not caster or caster:IsNull() or not caster:IsChanneling() then return nil end
+function modifier_custom_black_hole_thinker:IsHidden()   return true  end
+function modifier_custom_black_hole_thinker:IsPurgable() return false end
 
-        if ability.current_radius < ability.max_radius then
-            ability.current_radius = math.min(
-                ability.current_radius + ability.radius_grow_amount,
-                ability.max_radius
-            )
-            GridNav:DestroyTreesAroundPoint(point, ability.current_radius, false)
+function modifier_custom_black_hole_thinker:OnCreated(params)
+    if not IsServer() then return end
+
+    self.duration      = params.duration      or 4.0
+    self.start_radius  = params.start_radius  or 400
+    self.radius_growth = params.radius_growth or 75
+    self.pull_strength = params.pull_strength or 150
+    self.damage        = params.damage        or 50
+
+    self.current_radius = self.start_radius
+    self.elapsed        = 0
+    self.next_growth    = 1.0
+    self.point          = params.position or self:GetParent():GetAbsOrigin()
+
+    local thinker = self:GetParent()
+
+    -- === ЧАСТИЦА ===
+    self.particle = ParticleManager:CreateParticle(
+        "particles/units/heroes/hero_enigma/enigma_blackhole.vpcf",
+        PATTACH_CUSTOMORIGIN,
+        thinker)
+
+    ParticleManager:SetParticleControl(self.particle, 0, self.point)
+    ParticleManager:SetParticleControl(self.particle, 1, Vector(self.current_radius, 0, 0))
+
+    self:AddParticle(self.particle, true, false, 0, false, false)
+
+    -- === ЗВУК ===
+    self.sound_event = StartSoundEvent("Hero_Enigma.Black_Hole", nil)
+
+    -- Ломаем деревья в стартовом радиусе.
+    GridNav:DestroyTreesAroundPoint(self.point, self.current_radius, false)
+
+    self:StartIntervalThink(0.1)
+end
+
+function modifier_custom_black_hole_thinker:OnIntervalThink()
+    if not IsServer() then return end
+
+    local caster  = self:GetCaster()
+    local ability = self:GetAbility()
+    if not caster or caster:IsNull() or not ability then return end
+
+    self.elapsed = self.elapsed + 0.1
+
+    ---------------------------------------------------------------------------
+    -- РАЗ В СЕКУНДУ: рост радиуса + ломание деревьев + урон
+    ---------------------------------------------------------------------------
+    if self.elapsed >= self.next_growth then
+        self.next_growth    = self.next_growth + 1.0
+        self.current_radius = self.current_radius + self.radius_growth
+
+        if self.particle then
+            ParticleManager:SetParticleControl(self.particle, 1, Vector(self.current_radius, 0, 0))
         end
 
-        ability:UpdateParticleRadius()
-        return ability.radius_grow_interval
-    end)
+        GridNav:DestroyTreesAroundPoint(self.point, self.current_radius, false)
+
+        local enemies = self:GetEnemiesInRadius(ability, caster, self.current_radius)
+        for _, enemy in pairs(enemies) do
+            ApplyDamage({
+                victim      = enemy,
+                attacker    = caster,
+                ability     = ability,
+                damage      = self.damage,
+                damage_type = DAMAGE_TYPE_MAGICAL,
+            })
+        end
+    end
+
+    ---------------------------------------------------------------------------
+    -- СТАН как в ваниле: накладываем ОДИН РАЗ на оставшееся время канала
+    ---------------------------------------------------------------------------
+    local remaining = self.duration - self.elapsed
+    if remaining > 0.1 then
+        local enemies = self:GetEnemiesInRadius(ability, caster, self.current_radius)
+        for _, enemy in pairs(enemies) do
+            if not enemy:HasModifier("modifier_custom_black_hole_aura") then
+                enemy:AddNewModifier(
+                    caster,
+                    ability,
+                    "modifier_custom_black_hole_aura",
+                    {
+                        duration      = remaining,
+                        pull_strength = self.pull_strength,
+                        center        = self.point,
+                    }
+                )
+            end
+        end
+    end
 end
 
-function custom_black_hole:StartAuraTimer()
-    local ability = self
-    local caster  = self:GetCaster()
-    local point   = self.cast_point
+function modifier_custom_black_hole_thinker:OnDestroy()
+    if not IsServer() then return end
 
-    Timers:CreateTimer(0.1, function()
-        if not caster or caster:IsNull() or not caster:IsChanneling() then return nil end
-
+    -- Снимаем ауру со всех, кого зацепило — чтобы прерывание канала не оставляло висящий стан.
+    local caster = self:GetCaster()
+    if caster and not caster:IsNull() and self.point then
         local enemies = FindUnitsInRadius(
             caster:GetTeamNumber(),
-            point,
+            self.point,
             nil,
-            ability.current_radius,
+            self.current_radius + 500,
             DOTA_UNIT_TARGET_TEAM_ENEMY,
             DOTA_UNIT_TARGET_HERO + DOTA_UNIT_TARGET_BASIC,
-            DOTA_UNIT_TARGET_FLAG_NONE,
+            DOTA_UNIT_TARGET_FLAG_MAGIC_IMMUNE_ENEMIES,
             FIND_ANY_ORDER,
             false
         )
-
-        local remaining = ability:GetRemainingChannelTime()
-
         for _, enemy in pairs(enemies) do
-            if not enemy:HasModifier("modifier_custom_black_hole_pull") then
-                enemy:AddNewModifier(caster, ability, "modifier_custom_black_hole_pull", {
-                    duration = remaining,
-                })
-                ability.affected_units[enemy:GetEntityIndex()] = enemy
-            end
+            enemy:RemoveModifierByName("modifier_custom_black_hole_aura")
         end
+    end
 
-        for idx, unit in pairs(ability.affected_units) do
-            if not unit or unit:IsNull() or not unit:IsAlive() then
-                ability.affected_units[idx] = nil
-            elseif not unit:HasModifier("modifier_custom_black_hole_pull") then
-                ability.affected_units[idx] = nil
-            elseif (unit:GetAbsOrigin() - point):Length() > ability.current_radius * 1.15 then
-                unit:RemoveModifierByName("modifier_custom_black_hole_pull")
-                ability.affected_units[idx] = nil
-            end
-        end
+    -- Звук
+    if self.sound_event then
+        StopSoundEvent(self.sound_event, nil)
+        self.sound_event = nil
+    end
 
-        return 0.1
-    end)
+    -- Частица
+    if self.particle then
+        ParticleManager:DestroyParticle(self.particle, true)
+        ParticleManager:ReleaseParticleIndex(self.particle)
+        self.particle = nil
+    end
 end
 
-function custom_black_hole:PlayEffects(point)
-    local caster = self:GetCaster()
-
-    local fx = ParticleManager:CreateParticle(
-        "particles/units/heroes/hero_enigma/enigma_blackhole.vpcf",
-        PATTACH_WORLDORIGIN,
-        nil
+function modifier_custom_black_hole_thinker:GetEnemiesInRadius(ability, caster, radius)
+    return FindUnitsInRadius(
+        caster:GetTeamNumber(),
+        self.point,
+        nil,
+        radius,
+        DOTA_UNIT_TARGET_TEAM_ENEMY,
+        DOTA_UNIT_TARGET_HERO + DOTA_UNIT_TARGET_BASIC,
+        DOTA_UNIT_TARGET_FLAG_MAGIC_IMMUNE_ENEMIES,
+        FIND_ANY_ORDER,
+        false
     )
-    ParticleManager:SetParticleControl(fx, 0, point)
-    ParticleManager:SetParticleControl(fx, 1, Vector(self.current_radius, 1, 1))
-    self.black_hole_fx = fx
-
-    EmitSoundOn("Hero_Enigma.BlackHole", caster)
 end
 
--- ✅ Вот этой функции не хватало!
-function custom_black_hole:UpdateParticleRadius()
-    if self.black_hole_fx then
-        ParticleManager:SetParticleControl(
-            self.black_hole_fx, 1,
-            Vector(self.current_radius, 1, 1)
-        )
-    end
+--------------------------------------------------------------------------------
+-- Aura (стан + притягивание)
+--------------------------------------------------------------------------------
+modifier_custom_black_hole_aura = class({})
+
+function modifier_custom_black_hole_aura:IsDebuff()     return true  end
+function modifier_custom_black_hole_aura:IsHidden()     return false end
+function modifier_custom_black_hole_aura:IsPurgable()   return false end
+function modifier_custom_black_hole_aura:IsStunDebuff() return true  end
+
+function modifier_custom_black_hole_aura:GetEffectName()
+    return "particles/generic_gameplay/generic_stunned.vpcf"
 end
 
--- ✅ Чистим частицу и модификаторы при завершении/прерывании канала
-function custom_black_hole:OnChannelFinish(bInterrupted)
-    if self.black_hole_fx then
-        ParticleManager:DestroyParticle(self.black_hole_fx, false)
-        ParticleManager:ReleaseParticleIndex(self.black_hole_fx)
-        self.black_hole_fx = nil
-    end
+function modifier_custom_black_hole_aura:GetEffectAttachType()
+    return PATTACH_OVERHEAD_FOLLOW
+end
 
-    if self.affected_units then
-        for _, unit in pairs(self.affected_units) do
-            if unit and not unit:IsNull() then
-                unit:RemoveModifierByName("modifier_custom_black_hole_pull")
-            end
-        end
-        self.affected_units = {}
-    end
+function modifier_custom_black_hole_aura:CheckState()
+    return { [MODIFIER_STATE_STUNNED] = true }
+end
+
+function modifier_custom_black_hole_aura:OnCreated(params)
+    if not IsServer() then return end
+    self.center        = params.center
+    self.pull_strength = params.pull_strength or 150
+    self:StartIntervalThink(0.03)
+end
+
+function modifier_custom_black_hole_aura:OnIntervalThink()
+    if not IsServer() then return end
+    local parent = self:GetParent()
+    if not parent or parent:IsNull() or not self.center then return end
+
+    local pos = parent:GetAbsOrigin()
+    local dir = self.center - pos
+    dir.z = 0
+    local dist = dir:Length2D()
+    if dist < 20 then return end
+
+    dir = dir:Normalized()
+    local new_pos = pos + dir * self.pull_strength * 0.03
+    new_pos.z = pos.z
+    parent:SetAbsOrigin(new_pos)
 end

@@ -166,5 +166,10 @@ function BelkaMode:BelkaModeStart()
 end
 
 function Precache( context )
+    -- Частицы
     PrecacheResource( "particle", "particles/units/heroes/hero_gyrocopter/gyro_calldown_first.vpcf", context )
+    PrecacheResource( "particle", "particles/units/heroes/hero_enigma/enigma_blackhole.vpcf", context )
+    
+    -- 🔊 Принудительно загружаем звуки Энигмы
+    PrecacheResource( "soundfile", "soundevents/game_sounds_heroes/game_sounds_enigma.vsndevts", context )
 end
